@@ -1,0 +1,8 @@
+__pycache__/
+.env
+.ruff_cache/
+output_voice_clone.wav
+venv/
+node_modules/
+www/
+site/

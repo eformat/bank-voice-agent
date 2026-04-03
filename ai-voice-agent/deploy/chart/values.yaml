@@ -1,0 +1,105 @@
+backend:
+  image:
+    repository: quay.io/eformat/bank-demo-backend
+    tag: latest
+    pullPolicy: Always
+  replicas: 1
+  port: 8765
+  resources:
+    requests:
+      cpu: 200m
+      memory: 256Mi
+    limits:
+      cpu: "1"
+      memory: 512Mi
+  env:
+    MODEL_NAME: ""
+    BASE_URL: ""
+    TTS_URL: ""
+    TTS_MODEL: ""
+    TTS_VOICE: "belinda"
+    TTS_SAMPLE_RATE: "24000"
+    TTS_AUDIO_CHUNK_SIZE: "5"
+    TTS_TIMEOUT_S: "30"
+    STT_URL: ""
+    STT_MODEL: "whisper"
+    MLFLOW_TRACKING_URI: ""
+    MLFLOW_EXPERIMENT_NAME: "ai-voice-agent"
+  secret:
+    create: true
+    API_KEY: ""
+    TTS_API_KEY: ""
+    STT_TOKEN: ""
+
+frontend:
+  image:
+    repository: quay.io/eformat/bank-demo-frontend
+    tag: latest
+    pullPolicy: Always
+  replicas: 1
+  port: 8080
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+
+mlflow:
+  enabled: true
+  image:
+    repository: ghcr.io/mlflow/mlflow
+    tag: v3.10.1
+    pullPolicy: Always
+  replicas: 1
+  port: 5500
+  args:
+    - "mlflow"
+    - "server"
+    - "--host"
+    - "0.0.0.0"
+    - "--port"
+    - "5500"
+    - "--backend-store-uri"
+    - "sqlite:////mlflow/mlflow.db"
+    - "--default-artifact-root"
+    - "/mlflow/mlartifacts"
+    - "--disable-security-middleware"
+  persistence:
+    size: 5Gi
+    storageClass: ""
+  resources:
+    requests:
+      cpu: 200m
+      memory: 512Mi
+    limits:
+      cpu: 1000m
+      memory: 2048Mi
+  oauth:
+    enabled: true
+    image:
+      repository: quay.io/openshift/origin-oauth-proxy
+      tag: latest
+      pullPolicy: Always
+    cookieSecret: ""
+
+guardrails:
+  enabled: false
+  # URL of the guardrails orchestrator gateway service.
+  # Only used when enabled=true.
+  url: "http://guardrails-maas-proxy:8033/v1"
+
+nemoGuardrails:
+  enabled: false
+  url: "http://nemo-guardrails-internal:8000/v1"
+
+route:
+  enabled: true
+  host: ""
+  # Set to true to create a separate Route for the WebSocket backend.
+  # By default the WebSocket is proxied through nginx on the frontend (no extra route needed).
+  exposeWebsocket: false
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
