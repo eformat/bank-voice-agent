@@ -339,7 +339,7 @@ _BANKING_KEYWORDS = re.compile(
 _SUPPORTED_LANGUAGES = {"en", "english"}
 
 _CHURN_SIGNALS = re.compile(
-    r"\b(cancel|close|switch|leave|competitor|unhappy|dissatisfied|terrible|worst|"
+    r"\b(cancel|close|switch|leave|competitor|unhappy|dissatisfied|terrible|worst|elsewhere|"
     r"fed\s*up|done\s*with|moving\s*to|better\s*bank|horrible|unacceptable|rip\s*off|scam)\b",
     re.IGNORECASE,
 )
