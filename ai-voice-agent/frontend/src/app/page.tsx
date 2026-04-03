@@ -3,6 +3,20 @@
 
 import { useEffect, useRef, useState } from "react";
 
+type AnalysisItem = { status: string; detail: string };
+type InputAnalysis = {
+  guardrails: {
+    toxicity: AnalysisItem;
+    bank_topic: AnalysisItem;
+    language: AnalysisItem;
+  };
+  input_analysis: {
+    kyc: AnalysisItem;
+    sentiment: AnalysisItem;
+    churn: AnalysisItem;
+  };
+};
+
 type WsMsg =
   | { type: "transcript"; text: string }
   | { type: "tts_begin"; format: "pcm_s16le"; sample_rate: number }
@@ -13,7 +27,9 @@ type WsMsg =
       service_type: string;
       messages: { role: string; content: string }[];
       interrupt?: any;
+      analysis?: InputAnalysis;
     }
+  | { type: "input_analysis"; analysis: InputAnalysis }
   | { type: "guardrails_available"; available: boolean; fms_guardrails_available?: boolean; nemo_guardrails_available?: boolean }
   | { type: "guardrails_status"; enabled: boolean }
   | { type: "guardrails_mode"; mode: string }
@@ -326,6 +342,7 @@ export default function Home() {
   const [fmsAvailable, setFmsAvailable] = useState(false);
   const [nemoAvailable, setNemoAvailable] = useState(false);
   const [guardrailsMode, setGuardrailsMode] = useState<string>("none");
+  const [analysis, setAnalysis] = useState<InputAnalysis | null>(null);
 
   const wsRef = useRef<WebSocket | null>(null);
   const ttsReceivingBinaryRef = useRef<boolean>(false);
@@ -658,9 +675,13 @@ export default function Home() {
           }, 200);
         }
 
+        if (msg.type === "input_analysis") {
+          setAnalysis(msg.analysis);
+        }
         if (msg.type === "graph_result") {
           setServiceType(msg.service_type);
           setMessages(msg.messages);
+          if (msg.analysis) setAnalysis(msg.analysis);
         }
         if (msg.type === "guardrails_available") {
           setGuardrailsAvailable(msg.available);
@@ -1169,7 +1190,7 @@ export default function Home() {
           )}
         </div>
 
-        {/* ─── Right: Transcript + Conversation ──────────────────── */}
+        {/* ─── Center: Transcript + Conversation ──────────────────── */}
         <div className="flex-1 flex flex-col overflow-hidden border-l border-rh-gray-80">
           <div className="flex-none border-b border-rh-gray-80">
             <div className="px-6 py-3 border-b border-rh-gray-80 flex items-center justify-between">
@@ -1245,8 +1266,97 @@ export default function Home() {
             </div>
           </div>
         </div>
+
+        {/* ─── Right: Analysis Sidebar ─────────────────────────────── */}
+        <div className="flex-none w-[280px] border-l border-rh-gray-80 overflow-y-auto rh-scroll p-5 space-y-6 hidden lg:block">
+          {/* Guardrails */}
+          <div>
+            <h3 className="text-sm font-bold mb-3" style={{ fontFamily: "'Red Hat Display', sans-serif" }}>
+              Guardrails
+            </h3>
+            <div className="space-y-2">
+              <AnalysisCard
+                label="Toxicity Guardrail"
+                item={analysis?.guardrails.toxicity}
+              />
+              <AnalysisCard
+                label="Banking Topic Guardrail"
+                item={analysis?.guardrails.bank_topic}
+              />
+              <AnalysisCard
+                label="Language Support"
+                item={analysis?.guardrails.language}
+              />
+            </div>
+          </div>
+
+          {/* Input Analysis */}
+          <div>
+            <h3 className="text-sm font-bold mb-3" style={{ fontFamily: "'Red Hat Display', sans-serif" }}>
+              Input Analysis
+            </h3>
+            <div className="space-y-2">
+              <AnalysisCard
+                label="KYC Detection"
+                item={analysis?.input_analysis.kyc}
+              />
+              <AnalysisCard
+                label="Sentiment Analysis"
+                item={analysis?.input_analysis.sentiment}
+              />
+              <AnalysisCard
+                label="Churn Prediction"
+                item={analysis?.input_analysis.churn}
+              />
+            </div>
+          </div>
+
+          <button
+            className="w-full rounded-lg border border-rh-gray-70 text-rh-gray-40 px-3 py-2 text-xs hover:text-white hover:border-rh-gray-50 transition-colors"
+            onClick={() => setAnalysis(null)}
+          >
+            Clear
+          </button>
+        </div>
       </div>
       <div className="flex-none h-px bg-gradient-to-r from-rh-red via-rh-red/20 to-transparent" />
+    </div>
+  );
+}
+
+// ─── Analysis Card Component ──────────────────────────────────────────────────
+function AnalysisCard({ label, item }: { label: string; item?: AnalysisItem }) {
+  if (!item) {
+    return (
+      <div className="rounded-lg border border-rh-gray-70 bg-rh-gray-90 px-3 py-2.5 flex items-center gap-2">
+        <span className="text-base">--</span>
+        <span className="text-xs text-rh-gray-50">{label}: Waiting</span>
+      </div>
+    );
+  }
+
+  const statusConfig: Record<string, { icon: string; bg: string; border: string }> = {
+    passed:   { icon: "\u2705", bg: "bg-green-950/50", border: "border-green-800/60" },
+    detected: { icon: "\u2139\uFE0F", bg: "bg-blue-950/50", border: "border-blue-800/60" },
+    none:     { icon: "\u2705", bg: "bg-green-950/50", border: "border-green-800/60" },
+    positive: { icon: "\u2705", bg: "bg-green-950/50", border: "border-green-800/60" },
+    low:      { icon: "\u2705", bg: "bg-green-950/50", border: "border-green-800/60" },
+    neutral:  { icon: "\u26A0\uFE0F", bg: "bg-yellow-950/50", border: "border-yellow-800/60" },
+    warning:  { icon: "\u26A0\uFE0F", bg: "bg-yellow-950/50", border: "border-yellow-800/60" },
+    medium:   { icon: "\u26A0\uFE0F", bg: "bg-yellow-950/50", border: "border-yellow-800/60" },
+    negative: { icon: "\u26A0\uFE0F", bg: "bg-yellow-950/50", border: "border-yellow-800/60" },
+    failed:   { icon: "\uD83D\uDED1", bg: "bg-red-950/50", border: "border-red-800/60" },
+    high:     { icon: "\uD83D\uDED1", bg: "bg-red-950/50", border: "border-red-800/60" },
+  };
+
+  const cfg = statusConfig[item.status] || statusConfig.neutral;
+
+  return (
+    <div className={`rounded-lg border ${cfg.border} ${cfg.bg} px-3 py-2.5 flex items-center gap-2 transition-all animate-fade-in-up`}>
+      <span className="text-base flex-none">{cfg.icon}</span>
+      <span className="text-xs text-rh-gray-20">
+        {label}: <span className="font-semibold">{item.detail}</span>
+      </span>
     </div>
   );
 }

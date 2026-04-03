@@ -44,6 +44,7 @@ from src.graph import build_graph
 from src.nodes import GUARDRAILS_URL, NEMO_GUARDRAILS_URL
 from src.tools import (
     TTS_SAMPLE_RATE,
+    analyze_input,
     convert_speech_to_text,
     generate_tts_wav_b64,
     stream_tts_pcm_chunks,
@@ -227,6 +228,8 @@ async def handler(ws) -> None:
                 audio = base64.b64decode(b64)
                 text = convert_speech_to_text.invoke({"audio": audio})
                 await ws.send(json.dumps({"type": "transcript", "text": text}))
+                analysis = analyze_input(text)
+                await ws.send(json.dumps({"type": "input_analysis", "analysis": analysis}))
                 inputs = (
                     Command(resume=text)
                     if awaiting_resume
@@ -242,6 +245,7 @@ async def handler(ws) -> None:
                             "service_type": result.get("service_type", ""),
                             "messages": _safe_messages(result),
                             "interrupt": interrupt_values[0] if interrupt_values else None,
+                            "analysis": analysis,
                         }
                     )
                 )
@@ -264,6 +268,8 @@ async def handler(ws) -> None:
                     await ws.send(json.dumps({"type": "error", "error": "No text provided"}))
                     continue
                 print(f"[ws] text: {text!r}", flush=True)
+                analysis = analyze_input(text)
+                await ws.send(json.dumps({"type": "input_analysis", "analysis": analysis}))
                 try:
                     inputs = (
                         Command(resume=text)
@@ -294,6 +300,7 @@ async def handler(ws) -> None:
                             "interrupt": interrupt_values[0]
                             if interrupt_values
                             else None,
+                            "analysis": analysis,
                         }
                     )
                 )

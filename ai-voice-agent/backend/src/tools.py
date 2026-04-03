@@ -314,6 +314,151 @@ def get_service_type(query: str) -> dict:
 
 import hashlib
 import random
+import re
+
+
+# ============================================================
+# Input Analysis Functions (called server-side each turn)
+# ============================================================
+
+_TOXIC_PATTERNS = re.compile(
+    r"\b(kill|hate|stupid|idiot|damn|hell|crap|shut\s*up|die|threat|attack|bomb|ugly|loser)\b",
+    re.IGNORECASE,
+)
+
+_BANKING_KEYWORDS = re.compile(
+    r"\b(bank|account|credit|debit|loan|mortgage|interest|deposit|withdraw|transfer|balance|"
+    r"statement|savings|checking|investment|retirement|401k|ira|apr|fico|score|card|payment|"
+    r"debt|finance|money|dollar|fund|portfolio|stock|bond|annuity|insurance|branch|atm|"
+    r"overdraft|routing|swift|wire|escrow|amortiz|refinanc|preapproval|collateral|"
+    r"apply|application|eligib|qualify|rate|fee|charge|billing|due|minimum|limit|"
+    r"fraud|dispute|chargeback|pin|cvv|expir|ssn|social\s*security)\b",
+    re.IGNORECASE,
+)
+
+_SUPPORTED_LANGUAGES = {"en", "english"}
+
+_CHURN_SIGNALS = re.compile(
+    r"\b(cancel|close|switch|leave|competitor|unhappy|dissatisfied|terrible|worst|"
+    r"fed\s*up|done\s*with|moving\s*to|better\s*bank|horrible|unacceptable|rip\s*off|scam)\b",
+    re.IGNORECASE,
+)
+
+_KYC_KEYWORDS = re.compile(
+    r"\b(name|address|ssn|social\s*security|date\s*of\s*birth|dob|driver.?s?\s*license|"
+    r"passport|phone|email|employer|income|occupation|id\s*number|identification|"
+    r"verify|verification|identity|proof\s*of|tax\s*id|tin|w-?[249]|utility\s*bill)\b",
+    re.IGNORECASE,
+)
+
+
+def analyze_input(text: str) -> dict:
+    """Analyze a user message for guardrails and input signals.
+
+    Returns a dict with guardrails checks and input analysis that
+    the frontend can display in a sidebar panel each turn.
+    """
+    if not text or not text.strip():
+        return {
+            "guardrails": {
+                "toxicity": {"status": "passed", "detail": "No input"},
+                "bank_topic": {"status": "passed", "detail": "No input"},
+                "language": {"status": "passed", "detail": "English"},
+            },
+            "input_analysis": {
+                "kyc": {"status": "none", "detail": "No KYC data detected"},
+                "sentiment": {"status": "neutral", "detail": "Neutral"},
+                "churn": {"status": "low", "detail": "Low"},
+            },
+        }
+
+    text_lower = text.lower().strip()
+
+    # ── Guardrails ──
+
+    # Toxicity
+    toxic_matches = _TOXIC_PATTERNS.findall(text_lower)
+    if toxic_matches:
+        toxicity = {
+            "status": "failed",
+            "detail": f"Toxic content detected: {', '.join(set(toxic_matches))}",
+        }
+    else:
+        toxicity = {"status": "passed", "detail": "No toxic content detected"}
+
+    # Bank topic relevance
+    bank_matches = _BANKING_KEYWORDS.findall(text_lower)
+    if bank_matches:
+        bank_topic = {
+            "status": "passed",
+            "detail": f"Banking topic ({', '.join(set(bank_matches[:3]))})",
+        }
+    else:
+        bank_topic = {
+            "status": "warning",
+            "detail": "No banking keywords detected",
+        }
+
+    # Language detection (simple heuristic)
+    non_ascii_ratio = sum(1 for c in text if ord(c) > 127) / max(len(text), 1)
+    if non_ascii_ratio > 0.3:
+        language = {"status": "warning", "detail": "Non-English text detected"}
+    else:
+        language = {"status": "passed", "detail": "English"}
+
+    # ── Input Analysis ──
+
+    # KYC signals
+    kyc_matches = _KYC_KEYWORDS.findall(text_lower)
+    if kyc_matches:
+        kyc = {
+            "status": "detected",
+            "detail": f"KYC data: {', '.join(set(kyc_matches[:3]))}",
+        }
+    else:
+        kyc = {"status": "none", "detail": "No KYC data detected"}
+
+    # Sentiment (keyword-based)
+    positive_words = len(re.findall(
+        r"\b(thank|great|excellent|good|happy|pleased|love|wonderful|perfect|appreciate|helpful)\b",
+        text_lower,
+    ))
+    negative_words = len(re.findall(
+        r"\b(bad|poor|terrible|horrible|awful|angry|frustrated|annoyed|upset|disappointed|unhappy|worst|hate)\b",
+        text_lower,
+    ))
+
+    if positive_words > negative_words:
+        sentiment = {"status": "positive", "detail": "Positive"}
+    elif negative_words > positive_words:
+        sentiment = {"status": "negative", "detail": "Negative"}
+    else:
+        sentiment = {"status": "neutral", "detail": "Neutral"}
+
+    # Churn risk
+    churn_matches = _CHURN_SIGNALS.findall(text_lower)
+    if churn_matches:
+        churn = {
+            "status": "high",
+            "detail": f"High ({', '.join(set(churn_matches[:2]))})",
+        }
+    elif negative_words >= 2:
+        churn = {"status": "medium", "detail": "Medium"}
+    else:
+        churn = {"status": "low", "detail": "Low"}
+
+    return {
+        "guardrails": {
+            "toxicity": toxicity,
+            "bank_topic": bank_topic,
+            "language": language,
+        },
+        "input_analysis": {
+            "kyc": kyc,
+            "sentiment": sentiment,
+            "churn": churn,
+        },
+    }
 
 
 @tool
