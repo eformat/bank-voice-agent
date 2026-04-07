@@ -11,5 +11,11 @@ spec:
       port: {{ .Values.backend.port }}
       targetPort: ws
       protocol: TCP
+    {{- if .Values.kagenti.enabled }}
+    - name: a2a
+      port: {{ .Values.kagenti.a2aPort }}
+      targetPort: a2a
+      protocol: TCP
+    {{- end }}
   selector:
     {{- include "ai-voice-agent.backend.selectorLabels" . | nindent 4 }}

@@ -24,5 +24,6 @@ COPY mike.txt /app/mike.txt
 
 USER 1001
 EXPOSE 8765
+EXPOSE 8000
 
 CMD ["python", "ws_server.py"]

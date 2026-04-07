@@ -8,3 +8,5 @@ openai>=1.0.0
 pydantic>=2.10.0
 typing-extensions>=4.11.0
 mlflow>=3.10.1
+a2a-sdk[http-server]>=0.2.0
+uvicorn[standard]>=0.30.0

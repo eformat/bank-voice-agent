@@ -94,6 +94,10 @@ nemoGuardrails:
   enabled: false
   url: "http://nemo-guardrails-internal:8000/v1"
 
+kagenti:
+  enabled: false
+  a2aPort: 8000
+
 route:
   enabled: true
   host: ""

@@ -4,6 +4,12 @@ metadata:
   name: {{ include "ai-voice-agent.fullname" . }}-backend
   labels:
     {{- include "ai-voice-agent.backend.labels" . | nindent 4 }}
+    {{- if .Values.kagenti.enabled }}
+    kagenti.io/type: "agent"
+    kagenti.io/framework: "LangGraph"
+    kagenti.io/workload-type: "deployment"
+    protocol.kagenti.io/a2a: ""
+    {{- end }}
 spec:
   replicas: {{ .Values.backend.replicas }}
   selector:
@@ -13,7 +19,20 @@ spec:
     metadata:
       labels:
         {{- include "ai-voice-agent.backend.selectorLabels" . | nindent 8 }}
+        {{- if .Values.kagenti.enabled }}
+        kagenti.io/inject: "enabled"
+        kagenti.io/spire: "enabled"
+        kagenti.io/type: "agent"
+        protocol.kagenti.io/a2a: ""
+        {{- end }}
+      {{- if .Values.kagenti.enabled }}
+      annotations:
+        kagenti.io/inbound-ports-exclude: "{{ .Values.backend.port }}"
+      {{- end }}
     spec:
+      {{- if .Values.kagenti.enabled }}
+      serviceAccountName: {{ include "ai-voice-agent.fullname" . }}-backend
+      {{- end }}
       containers:
         - name: backend
           image: "{{ .Values.backend.image.repository }}:{{ .Values.backend.image.tag }}"
@@ -22,7 +41,16 @@ spec:
             - name: ws
               containerPort: {{ .Values.backend.port }}
               protocol: TCP
+            {{- if .Values.kagenti.enabled }}
+            - name: a2a
+              containerPort: {{ .Values.kagenti.a2aPort }}
+              protocol: TCP
+            {{- end }}
           env:
+            {{- if .Values.kagenti.enabled }}
+            - name: KAGENTI_ENABLED
+              value: "true"
+            {{- end }}
             {{- range $key, $val := .Values.backend.env }}
             {{- if and (eq $key "MLFLOW_TRACKING_URI") (not $val) $.Values.mlflow.enabled }}
             - name: MLFLOW_TRACKING_URI
@@ -55,6 +83,12 @@ spec:
                 secretKeyRef:
                   name: {{ include "ai-voice-agent.fullname" . }}-backend
                   key: STT_TOKEN
+          {{- if .Values.kagenti.enabled }}
+          volumeMounts:
+            - name: svid-output
+              mountPath: /spiffe
+              readOnly: true
+          {{- end }}
           resources:
             {{- toYaml .Values.backend.resources | nindent 12 }}
           readinessProbe:
@@ -67,3 +101,17 @@ spec:
               port: ws
             initialDelaySeconds: 10
             periodSeconds: 30
+          {{- if .Values.kagenti.enabled }}
+          startupProbe:
+            httpGet:
+              path: /.well-known/agent-card.json
+              port: a2a
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            failureThreshold: 18
+          {{- end }}
+      {{- if .Values.kagenti.enabled }}
+      volumes:
+        - name: svid-output
+          emptyDir: {}
+      {{- end }}

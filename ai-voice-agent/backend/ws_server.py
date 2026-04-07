@@ -68,6 +68,45 @@ if _mlflow_uri:
     except Exception as exc:
         print(f"[mlflow] Failed to initialise tracing (continuing without): {exc}", flush=True)
 
+# ─── SPIRE identity (read once at startup) ──────────────────────────────────
+_spire_identity: dict[str, str] = {}
+_SVID_DIR = os.environ.get("SPIFFE_SVID_DIR", "/spiffe")
+_JWT_SVID_PATH = os.path.join(_SVID_DIR, "jwt_svid.token")
+_X509_SVID_PATH = os.path.join(_SVID_DIR, "svid.pem")
+
+def _load_spire_identity() -> dict[str, str]:
+    """Read SPIRE SVID files and extract identity claims."""
+    identity: dict[str, str] = {}
+    try:
+        if os.path.isfile(_JWT_SVID_PATH):
+            with open(_JWT_SVID_PATH) as f:
+                jwt_token = f.read().strip()
+            # Decode payload without verification (local file, trusted)
+            parts = jwt_token.split(".")
+            if len(parts) >= 2:
+                import base64 as _b64
+                padded = parts[1] + "=" * (4 - len(parts[1]) % 4)
+                payload = json.loads(_b64.urlsafe_b64decode(padded))
+                identity["spiffe.id"] = payload.get("sub", "")
+                identity["spiffe.audience"] = str(payload.get("aud", ""))
+                identity["spiffe.issuer"] = payload.get("iss", "")
+                identity["spiffe.expiry"] = str(payload.get("exp", ""))
+            identity["spiffe.jwt_svid"] = jwt_token[:80] + "..."
+    except Exception as exc:
+        print(f"[spire] Failed to read JWT SVID: {exc}", flush=True)
+    try:
+        if os.path.isfile(_X509_SVID_PATH):
+            with open(_X509_SVID_PATH) as f:
+                cert_pem = f.read().strip()
+            identity["spiffe.x509_svid"] = cert_pem[:120] + "..."
+    except Exception as exc:
+        print(f"[spire] Failed to read X.509 SVID: {exc}", flush=True)
+    return identity
+
+_spire_identity = _load_spire_identity()
+if _spire_identity:
+    print(f"[spire] Identity loaded: {_spire_identity.get('spiffe.id', 'unknown')}", flush=True)
+
 
 def _mlflow_callbacks() -> list:
     """Return MLflow callback handlers if tracing is enabled, else empty list."""
@@ -77,6 +116,19 @@ def _mlflow_callbacks() -> list:
         return [MlflowLangchainTracer()]
     except Exception:
         return []
+
+
+def _set_spire_trace_attributes() -> None:
+    """Attach SPIRE identity attributes to the current active MLflow span."""
+    if not _mlflow_enabled or not _spire_identity:
+        return
+    try:
+        span = mlflow.get_current_active_span()
+        if span:
+            for key, value in _spire_identity.items():
+                span.set_attribute(key, value)
+    except Exception:
+        pass
 
 
 def _safe_messages(result: dict) -> list[dict[str, str]]:
@@ -148,7 +200,16 @@ async def _invoke_graph(inputs: Any, config: dict, mode: str = "none") -> dict:
     if callbacks:
         config = {**config, "callbacks": callbacks}
     graph = _GRAPHS.get(mode) or GRAPH
-    return await asyncio.to_thread(graph.invoke, inputs, config)
+
+    def _invoke_with_spire():
+        if _mlflow_enabled:
+            with mlflow.start_span(name="voice_agent_invoke") as span:
+                for key, value in _spire_identity.items():
+                    span.set_attribute(key, value)
+                return graph.invoke(inputs, config)
+        return graph.invoke(inputs, config)
+
+    return await asyncio.to_thread(_invoke_with_spire)
 
 
 async def _tts_payload(text: str) -> dict:
@@ -359,8 +420,15 @@ async def handler(ws) -> None:
                 break
 
 
+async def _run_ws(host: str, port: int, stop_event: asyncio.Event) -> None:
+    """Run the WebSocket server until stop_event is set."""
+    async with websockets.serve(handler, host, port, max_size=20 * 1024 * 1024):
+        print(f"WS server listening on ws://{host}:{port}", flush=True)
+        await stop_event.wait()
+
+
 async def main(host: str = "0.0.0.0", port: int = 8765):
-    """Main function to start the WS server."""
+    """Main function to start the WS server (and optionally A2A server)."""
     # websockets is a required dependency - import would fail at module level if missing
     assert websockets is not None
     loop = asyncio.get_running_loop()
@@ -383,9 +451,17 @@ async def main(host: str = "0.0.0.0", port: int = 8765):
         signal.signal(signal.SIGINT, lambda *_: _request_shutdown("SIGINT"))
         signal.signal(signal.SIGTERM, lambda *_: _request_shutdown("SIGTERM"))
 
-    async with websockets.serve(handler, host, port, max_size=20 * 1024 * 1024):
-        print(f"WS server listening on ws://{host}:{port}", flush=True)
-        await stop_event.wait()
+    kagenti_enabled = os.environ.get("KAGENTI_ENABLED", "").lower() in ("true", "1", "yes")
+    if kagenti_enabled:
+        from src.a2a_server import run_a2a_server
+
+        print("[kagenti] A2A server enabled on port 8000", flush=True)
+        await asyncio.gather(
+            _run_ws(host, port, stop_event),
+            run_a2a_server(GRAPH),
+        )
+    else:
+        await _run_ws(host, port, stop_event)
 
 
 if __name__ == "__main__":

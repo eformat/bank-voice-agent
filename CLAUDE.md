@@ -78,3 +78,59 @@ nemoGuardrails:
   enabled: false
   url: "http://nemo-guardrails-internal:8000/v1"
 ```
+
+## Kagenti Integration
+
+The agent can optionally integrate with the [kagenti](https://github.com/kagenti) platform for agent catalog discovery, AuthBridge sidecar injection (zero-trust auth), and SPIRE workload identity.
+
+### Feature flag
+
+- **Env var**: `KAGENTI_ENABLED=true` — starts an A2A HTTP server on port 8000 alongside the WebSocket server on 8765. When unset or false, only the WebSocket server runs (existing behavior).
+- **Helm**: `--set kagenti.enabled=true` — adds kagenti labels/annotations to the backend Deployment and pod template, creates a ServiceAccount for SPIRE identity, exposes port 8000, mounts SPIRE SVIDs, and sets the `KAGENTI_ENABLED` env var.
+
+### A2A protocol endpoint
+
+When enabled, the backend exposes:
+- `GET /.well-known/agent-card.json` — agent metadata for kagenti catalog discovery
+- `POST /` — A2A message endpoint (text-only, no voice/audio)
+
+The A2A layer (`backend/src/a2a_server.py`) wraps the same LangGraph graph used by the WebSocket server. Multi-turn conversations are supported via `MemorySaver` keyed by A2A task context ID. Interrupt-based flows (agent asking for more info) map to `TaskState.input_required`.
+
+### AuthBridge and WebSocket coexistence
+
+The kagenti webhook injects an AuthBridge envoy sidecar that intercepts all inbound traffic for JWT validation. WebSocket traffic (port 8765) must bypass envoy since the frontend nginx proxy connects without a JWT. This is handled via the pod annotation `kagenti.io/inbound-ports-exclude: "8765"`, which tells the webhook's `proxy-init` init container to add iptables RETURN rules excluding port 8765 from envoy interception. A2A traffic (port 8000) goes through envoy for JWT validation as intended.
+
+### SPIRE workload identity
+
+When kagenti is enabled, the `spiffe-helper` sidecar writes SVID files to the `svid-output` emptyDir volume. The backend container mounts this at `/spiffe` (not `/opt` — the container image uses `/opt/app-root` for Python). The `SPIFFE_SVID_DIR` env var can override this path (defaults to `/spiffe`).
+
+At startup, `ws_server.py` reads the JWT and X.509 SVIDs and extracts identity claims (`spiffe.id`, `spiffe.audience`, `spiffe.issuer`, `spiffe.expiry`). These are attached to MLflow traces as span attributes on a `voice_agent_invoke` (WebSocket) or `a2a_agent_invoke` (A2A) parent span that wraps each LangGraph invocation.
+
+### Helm chart configuration
+
+```yaml
+kagenti:
+  enabled: false
+  a2aPort: 8000
+```
+
+### Kagenti labels and annotations
+
+When `kagenti.enabled=true`, the Helm chart adds:
+
+**Deployment metadata labels** (for kagenti catalog discovery):
+- `kagenti.io/type: "agent"`, `kagenti.io/framework: "LangGraph"`, `kagenti.io/workload-type: "deployment"`, `protocol.kagenti.io/a2a: ""`
+
+**Pod template labels** (for webhook sidecar injection):
+- `kagenti.io/inject: "enabled"`, `kagenti.io/spire: "enabled"`, `kagenti.io/type: "agent"`, `protocol.kagenti.io/a2a: ""`
+
+**Pod template annotations**:
+- `kagenti.io/inbound-ports-exclude: "8765"` — excludes WebSocket port from envoy interception
+
+### Deploying into kagenti
+
+1. Deploy into a kagenti agent namespace (e.g., `team1`) that already has AuthBridge ConfigMaps and SPIRE registration.
+2. Install with `helm install bank-agent ./chart --set kagenti.enabled=true -n team1`.
+3. The kagenti webhook automatically injects AuthBridge sidecars (envoy-proxy, spiffe-helper, client-registration, proxy-init).
+4. The agent appears in the kagenti catalog via its A2A agent card.
+5. The backend pod runs 3 containers: `backend`, `envoy-proxy`, `spiffe-helper`.
