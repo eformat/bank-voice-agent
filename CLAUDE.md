@@ -47,7 +47,7 @@ When `GUARDRAILS_URL` is set, the backend creates `ChatOpenAI` instances pointed
 
 When `NEMO_GUARDRAILS_URL` is set, a `ChatOpenAI` instance (`nemo_llm`) is created pointed at the NeMo server. NeMo uses an OpenAI-compatible `/v1/chat/completions` endpoint. Blocking is detected by checking for canned response patterns (`"I'm sorry, I can't respond to that"`, `"I can't help with that type of request"`).
 
-The NeMo service runs on port 8000 inside its pod but is fronted by a kube-rbac-proxy (HTTPS/443). A separate internal Service (`nemo-guardrails-internal`) exposes port 8000 directly, bypassing the RBAC proxy.
+The NeMo service runs on port 8080 inside its pod but is fronted by a kube-rbac-proxy (HTTPS/443). A separate internal Service (`nemo-guardrails-internal`) exposes port 8080 directly, bypassing the RBAC proxy.
 
 #### NeMo Screening flow
 
@@ -85,8 +85,8 @@ The agent can optionally integrate with the [kagenti](https://github.com/kagenti
 
 ### Feature flag
 
-- **Env var**: `KAGENTI_ENABLED=true` — starts an A2A HTTP server on port 8000 alongside the WebSocket server on 8765. When unset or false, only the WebSocket server runs (existing behavior).
-- **Helm**: `--set kagenti.enabled=true` — adds kagenti labels/annotations to the backend Deployment and pod template, creates a ServiceAccount for SPIRE identity, exposes port 8000, mounts SPIRE SVIDs, and sets the `KAGENTI_ENABLED` env var.
+- **Env var**: `KAGENTI_ENABLED=true` — starts an A2A HTTP server on port 8080 alongside the WebSocket server on 8765. When unset or false, only the WebSocket server runs (existing behavior).
+- **Helm**: `--set kagenti.enabled=true` — adds kagenti labels/annotations to the backend Deployment and pod template, creates a ServiceAccount for SPIRE identity, exposes port 8080, mounts SPIRE SVIDs, and sets the `KAGENTI_ENABLED` env var.
 
 ### A2A protocol endpoint
 
@@ -98,7 +98,7 @@ The A2A layer (`backend/src/a2a_server.py`) wraps the same LangGraph graph used 
 
 ### AuthBridge and WebSocket coexistence
 
-The kagenti webhook injects an AuthBridge envoy sidecar that intercepts all inbound traffic for JWT validation. WebSocket traffic (port 8765) must bypass envoy since the frontend nginx proxy connects without a JWT. This is handled via the pod annotation `kagenti.io/inbound-ports-exclude: "8765"`, which tells the webhook's `proxy-init` init container to add iptables RETURN rules excluding port 8765 from envoy interception. A2A traffic (port 8000) goes through envoy for JWT validation as intended.
+The kagenti webhook injects an AuthBridge envoy sidecar that intercepts all inbound traffic for JWT validation. WebSocket traffic (port 8765) must bypass envoy since the frontend nginx proxy connects without a JWT. This is handled via the pod annotation `kagenti.io/inbound-ports-exclude: "8765"`, which tells the webhook's `proxy-init` init container to add iptables RETURN rules excluding port 8765 from envoy interception. A2A traffic (port 8080) goes through envoy for JWT validation as intended.
 
 ### SPIRE workload identity
 
@@ -111,7 +111,7 @@ At startup, `ws_server.py` reads the JWT and X.509 SVIDs and extracts identity c
 ```yaml
 kagenti:
   enabled: false
-  a2aPort: 8000
+  a2aPort: 8080
 ```
 
 ### Kagenti labels and annotations

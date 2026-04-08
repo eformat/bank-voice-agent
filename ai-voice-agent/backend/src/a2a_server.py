@@ -42,7 +42,7 @@ logger = logging.getLogger(__name__)
 # Agent Card
 # ---------------------------------------------------------------------------
 
-def _build_agent_card(host: str = "0.0.0.0", port: int = 8000) -> AgentCard:
+def _build_agent_card(host: str = "0.0.0.0", port: int = 8080) -> AgentCard:
     return AgentCard(
         name="Acme Bank Assistant",
         description=(
@@ -228,7 +228,7 @@ class BankAgentExecutor(AgentExecutor):
 # Server startup
 # ---------------------------------------------------------------------------
 
-async def run_a2a_server(graph, host: str = "0.0.0.0", port: int = 8000):
+async def run_a2a_server(graph, host: str = "0.0.0.0", port: int = 8080):
     """Start the A2A HTTP server as an async coroutine (non-blocking)."""
     agent_card = _build_agent_card(host, port)
     executor = BankAgentExecutor(graph)

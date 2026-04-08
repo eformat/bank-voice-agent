@@ -96,7 +96,7 @@ nemoGuardrails:
 
 kagenti:
   enabled: false
-  a2aPort: 8000
+  a2aPort: 8080
 
 route:
   enabled: true

@@ -455,7 +455,7 @@ async def main(host: str = "0.0.0.0", port: int = 8765):
     if kagenti_enabled:
         from src.a2a_server import run_a2a_server
 
-        print("[kagenti] A2A server enabled on port 8000", flush=True)
+        print("[kagenti] A2A server enabled on port 8080", flush=True)
         await asyncio.gather(
             _run_ws(host, port, stop_event),
             run_a2a_server(GRAPH),

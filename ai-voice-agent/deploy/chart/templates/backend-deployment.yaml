@@ -103,9 +103,8 @@ spec:
             periodSeconds: 30
           {{- if .Values.kagenti.enabled }}
           startupProbe:
-            httpGet:
-              path: /.well-known/agent-card.json
-              port: a2a
+            tcpSocket:
+              port: ws
             initialDelaySeconds: 30
             periodSeconds: 10
             failureThreshold: 18
