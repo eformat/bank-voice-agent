@@ -63,10 +63,18 @@ spec:
             {{- if .Values.guardrails.enabled }}
             - name: GUARDRAILS_URL
               value: {{ .Values.guardrails.url | quote }}
+            {{- if .Values.guardrails.token }}
+            - name: GUARDRAILS_TOKEN
+              value: {{ .Values.guardrails.token | quote }}
+            {{- end }}
             {{- end }}
             {{- if .Values.nemoGuardrails.enabled }}
             - name: NEMO_GUARDRAILS_URL
               value: {{ .Values.nemoGuardrails.url | quote }}
+            {{- if .Values.nemoGuardrails.token }}
+            - name: NEMO_GUARDRAILS_TOKEN
+              value: {{ .Values.nemoGuardrails.token | quote }}
+            {{- end }}
             {{- end }}
             - name: API_KEY
               valueFrom:

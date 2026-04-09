@@ -37,7 +37,9 @@ MODEL_NAME = os.getenv("MODEL_NAME", "MODEL_NAME")
 BASE_URL = os.getenv("BASE_URL", "BASE_URL")
 API_KEY = os.getenv("API_KEY", "API_KEY")
 GUARDRAILS_URL = os.getenv("GUARDRAILS_URL", "")
+GUARDRAILS_TOKEN = os.getenv("GUARDRAILS_TOKEN", "")
 NEMO_GUARDRAILS_URL = os.getenv("NEMO_GUARDRAILS_URL", "")
+NEMO_GUARDRAILS_TOKEN = os.getenv("NEMO_GUARDRAILS_TOKEN", "")
 
 # ============================================================
 # Configuration
@@ -151,6 +153,8 @@ def _trace_guardrails(label: str) -> None:
 
 _guardrails_http_client = httpx.Client(event_hooks={"response": [_log_guardrails_response]})
 _GUARDRAILS_LLM_COMMON = {**_LLM_COMMON, "streaming": False, "http_client": _guardrails_http_client}
+if GUARDRAILS_TOKEN:
+    _GUARDRAILS_LLM_COMMON["api_key"] = GUARDRAILS_TOKEN
 
 if GUARDRAILS_URL:
     guardrails_llm = ChatOpenAI(
@@ -187,10 +191,13 @@ if GUARDRAILS_URL:
 # NeMo Guardrails LLM instance
 # ============================================================
 if NEMO_GUARDRAILS_URL:
+    _nemo_kwargs = {**_LLM_COMMON, "streaming": False}
+    if NEMO_GUARDRAILS_TOKEN:
+        _nemo_kwargs["api_key"] = NEMO_GUARDRAILS_TOKEN
     nemo_llm = ChatOpenAI(
         base_url=NEMO_GUARDRAILS_URL,
         extra_body=_EXTRA_BODY,
-        **{**_LLM_COMMON, "streaming": False},
+        **_nemo_kwargs,
     )
     nemo_supervisor_agent = create_react_agent(model=nemo_llm, tools=[])
 

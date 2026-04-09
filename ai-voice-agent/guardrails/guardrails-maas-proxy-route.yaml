@@ -1,0 +1,20 @@
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: guardrails-maas-proxy
+  namespace: voice-agents
+  labels:
+    app: guardrails-maas-proxy
+spec:
+  host: guardrails-maas-proxy-voice-agents.apps.ocp.cloud.rhai-tmm.dev
+  to:
+    kind: Service
+    name: guardrails-maas-proxy
+    weight: 100
+  port:
+    targetPort: orchestrator
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+  wildcardPolicy: None

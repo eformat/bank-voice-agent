@@ -1,0 +1,42 @@
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: nemo-guardrails-api
+  namespace: voice-agents
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: nemo-guardrails-api-token
+  namespace: voice-agents
+  annotations:
+    kubernetes.io/service-account.name: nemo-guardrails-api
+type: kubernetes.io/service-account-token
+---
+# The kube-rbac-proxy on nemo-guardrails performs a SubjectAccessReview for
+# verb=get resource=services in voice-agents (without resourceName). Grant
+# the broader permission so the SAR check passes.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: nemo-guardrails-api-access
+  namespace: voice-agents
+rules:
+  - apiGroups: [""]
+    resources: ["services"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: nemo-guardrails-api-access
+  namespace: voice-agents
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: nemo-guardrails-api-access
+subjects:
+  - kind: ServiceAccount
+    name: nemo-guardrails-api
+    namespace: voice-agents

@@ -89,10 +89,12 @@ guardrails:
   # URL of the guardrails orchestrator gateway service.
   # Only used when enabled=true.
   url: "http://guardrails-maas-proxy:8033/v1"
+  token: ""
 
 nemoGuardrails:
   enabled: false
   url: "http://nemo-guardrails-internal:8000/v1"
+  token: ""
 
 kagenti:
   enabled: false
