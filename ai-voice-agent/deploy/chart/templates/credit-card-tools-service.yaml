@@ -1,0 +1,19 @@
+{{- if .Values.creditCardTools.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "ai-voice-agent.fullname" . }}-credit-card-tools
+  labels:
+    {{- include "ai-voice-agent.labels" . | nindent 4 }}
+    app.kubernetes.io/component: credit-card-tools
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: {{ .Values.creditCardTools.port }}
+      targetPort: http
+      protocol: TCP
+  selector:
+    app.kubernetes.io/component: credit-card-tools
+    app.kubernetes.io/name: {{ include "ai-voice-agent.fullname" . }}-credit-card-tools
+{{- end }}

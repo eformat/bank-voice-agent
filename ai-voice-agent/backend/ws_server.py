@@ -118,18 +118,6 @@ def _mlflow_callbacks() -> list:
         return []
 
 
-def _set_spire_trace_attributes() -> None:
-    """Attach SPIRE identity attributes to the current active MLflow span."""
-    if not _mlflow_enabled or not _spire_identity:
-        return
-    try:
-        span = mlflow.get_current_active_span()
-        if span:
-            for key, value in _spire_identity.items():
-                span.set_attribute(key, value)
-    except Exception:
-        pass
-
 
 def _safe_messages(result: dict) -> list[dict[str, str]]:
     msgs = []
@@ -202,12 +190,26 @@ async def _invoke_graph(inputs: Any, config: dict, mode: str = "none") -> dict:
     graph = _GRAPHS.get(mode) or GRAPH
 
     def _invoke_with_spire():
-        if _mlflow_enabled:
-            with mlflow.start_span(name="voice_agent_invoke") as span:
-                for key, value in _spire_identity.items():
-                    span.set_attribute(key, value)
-                return graph.invoke(inputs, config)
-        return graph.invoke(inputs, config)
+        result = graph.invoke(inputs, config)
+        if _mlflow_enabled and _spire_identity:
+            try:
+                client = mlflow.MlflowClient()
+                experiment = client.get_experiment_by_name(
+                    os.environ.get("MLFLOW_EXPERIMENT_NAME", "ai-voice-agent")
+                )
+                if experiment:
+                    traces = client.search_traces(
+                        experiment_ids=[experiment.experiment_id],
+                        max_results=1,
+                    )
+                    if traces:
+                        request_id = traces[0].info.request_id
+                        for key, value in _spire_identity.items():
+                            client.set_trace_tag(request_id, key, value)
+                        print(f"[spire] Tagged trace {request_id}", flush=True)
+            except Exception as exc:
+                print(f"[spire] Failed to set trace tags: {exc}", flush=True)
+        return result
 
     return await asyncio.to_thread(_invoke_with_spire)
 

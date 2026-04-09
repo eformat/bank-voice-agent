@@ -40,6 +40,7 @@ GUARDRAILS_URL = os.getenv("GUARDRAILS_URL", "")
 GUARDRAILS_TOKEN = os.getenv("GUARDRAILS_TOKEN", "")
 NEMO_GUARDRAILS_URL = os.getenv("NEMO_GUARDRAILS_URL", "")
 NEMO_GUARDRAILS_TOKEN = os.getenv("NEMO_GUARDRAILS_TOKEN", "")
+CREDIT_CARD_TOOLS_MCP_URL = os.getenv("CREDIT_CARD_TOOLS_MCP_URL", "")
 
 # ============================================================
 # Configuration
@@ -174,12 +175,71 @@ if GUARDRAILS_URL:
     )
 
 # ============================================================
+# MCP credit-card-tools (optional — falls back to local tool)
+# ============================================================
+if CREDIT_CARD_TOOLS_MCP_URL:
+    import asyncio
+    from langchain_mcp_adapters.client import MultiServerMCPClient
+
+    async def _load_mcp_tools():
+        client = MultiServerMCPClient(
+            {
+                "credit-card-tools": {
+                    "url": CREDIT_CARD_TOOLS_MCP_URL,
+                    "transport": "streamable_http",
+                }
+            }
+        )
+        return await client.get_tools()
+
+    _mcp_tools = asyncio.get_event_loop().run_until_complete(_load_mcp_tools())
+    print(
+        f"[mcp] Loaded {len(_mcp_tools)} tools from {CREDIT_CARD_TOOLS_MCP_URL}: "
+        f"{[t.name for t in _mcp_tools]}",
+        flush=True,
+    )
+    for t in _mcp_tools:
+        schema = t.args_schema
+        if hasattr(schema, 'schema'):
+            schema = schema.schema()
+        print(f"[mcp]   {t.name}: {t.description[:80]}... args={schema}", flush=True)
+
+    # MCP tools are async-only (StructuredTool with only _arun, no _run).
+    # LangGraph's create_react_agent invokes tools synchronously by default.
+    # Wrap each MCP tool with a sync-compatible version.
+    from langchain_core.tools import StructuredTool as _StructuredTool
+
+    def _make_sync_wrapper(async_tool):
+        """Create a sync-compatible tool that delegates to the async MCP tool."""
+        def _sync_run(**kwargs):
+            loop = asyncio.new_event_loop()
+            try:
+                return loop.run_until_complete(async_tool.ainvoke(kwargs))
+            finally:
+                loop.close()
+
+        async def _async_run(**kwargs):
+            return await async_tool.ainvoke(kwargs)
+
+        return _StructuredTool(
+            name=async_tool.name,
+            description=async_tool.description,
+            args_schema=async_tool.args_schema,
+            func=_sync_run,
+            coroutine=_async_run,
+        )
+
+    _credit_score_tool = [_make_sync_wrapper(t) for t in _mcp_tools]
+else:
+    _credit_score_tool = [check_credit_score]
+
+# ============================================================
 # Agent Creation
 # ============================================================
 supervisor_agent = create_react_agent(model=llm, tools=[])
-loan_agent = create_react_agent(model=llm, tools=[log_inquiry, check_credit_score])
-credit_card_agent = create_react_agent(model=llm, tools=[get_service_type, check_credit_score])
-investment_agent = create_react_agent(model=llm, tools=[lookup_account, check_credit_score])
+loan_agent = create_react_agent(model=llm, tools=[log_inquiry] + _credit_score_tool)
+credit_card_agent = create_react_agent(model=llm, tools=[get_service_type] + _credit_score_tool)
+investment_agent = create_react_agent(model=llm, tools=[lookup_account] + _credit_score_tool)
 
 # Guardrails agents reuse the regular agents (with tools, regular LLM)
 # because the orchestrator cannot handle "tool" role messages in the

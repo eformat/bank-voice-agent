@@ -141,18 +141,29 @@ class BankAgentExecutor(AgentExecutor):
 
             # Stream graph execution in a thread to avoid blocking
             def _invoke_with_spire():
-                # Attach SPIRE identity to MLflow trace as a parent span
+                result = self._graph.invoke(inputs, config)
                 try:
                     from ws_server import _mlflow_enabled, _spire_identity
                     if _mlflow_enabled and _spire_identity:
+                        import os
                         import mlflow
-                        with mlflow.start_span(name="a2a_agent_invoke") as span:
-                            for key, value in _spire_identity.items():
-                                span.set_attribute(key, value)
-                            return self._graph.invoke(inputs, config)
-                except Exception:
-                    pass
-                return self._graph.invoke(inputs, config)
+                        client = mlflow.MlflowClient()
+                        experiment = client.get_experiment_by_name(
+                            os.environ.get("MLFLOW_EXPERIMENT_NAME", "ai-voice-agent")
+                        )
+                        if experiment:
+                            traces = client.search_traces(
+                                experiment_ids=[experiment.experiment_id],
+                                max_results=1,
+                            )
+                            if traces:
+                                request_id = traces[0].info.request_id
+                                for key, value in _spire_identity.items():
+                                    client.set_trace_tag(request_id, key, value)
+                                logger.info(f"[spire] Tagged trace {request_id}")
+                except Exception as exc:
+                    logger.error(f"[spire] Failed to set trace tags: {exc}")
+                return result
 
             result = await asyncio.to_thread(_invoke_with_spire)
 

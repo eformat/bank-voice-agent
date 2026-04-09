@@ -6,10 +6,11 @@ AI voice agent demo built on LangGraph with TrustyAI Guardrails integration.
 
 ```
 ai-voice-agent/
-  backend/          Python WebSocket server (LangGraph agent graph)
-  frontend/         React/Next.js UI
-  deploy/chart/     Helm chart for OpenShift deployment
-  guardrails/       Kustomize resources for Guardrails
+  backend/              Python WebSocket server (LangGraph agent graph)
+  frontend/             React/Next.js UI
+  credit-card-tools/    MCP server for credit card tools (check_credit_score)
+  deploy/chart/         Helm chart for OpenShift deployment
+  guardrails/           Kustomize resources for Guardrails
 ```
 
 ## Guardrails
@@ -79,6 +80,44 @@ nemoGuardrails:
   url: "http://nemo-guardrails-internal:8000/v1"
 ```
 
+## MCP Credit Card Tools
+
+The `check_credit_score` tool can optionally run as a standalone MCP server (`credit-card-tools/`) instead of being built into the backend. This enables the tool to appear in the kagenti MCP Gateway tool catalog.
+
+### Architecture
+
+- **MCP server** (`credit-card-tools/server.py`): FastMCP server exposing `check_credit_score` via streamable-http transport on port 8080. Constructor takes `host` and `port` — `run()` only takes `transport`.
+- **Backend integration** (`nodes.py`): When `CREDIT_CARD_TOOLS_MCP_URL` is set, the backend loads tools from the MCP server via `langchain-mcp-adapters` `MultiServerMCPClient` instead of using the local tool implementation.
+
+### MCP tool sync wrapper
+
+MCP tools from `langchain-mcp-adapters` are async-only (`StructuredTool` with only `_arun`, no `_run`). LangGraph's `create_react_agent` invokes tools synchronously. Each MCP tool is wrapped with a sync-compatible `StructuredTool` that creates a new event loop in `func` to bridge to the async implementation.
+
+### MCP streamable-http notes
+
+- `POST /mcp` for requests, `GET /mcp` requires `Accept: text/event-stream` header
+- Health probes must use `tcpSocket`, not `httpGet` (GET without the right Accept header returns 406)
+- `MultiServerMCPClient` is NOT a context manager in `langchain-mcp-adapters >=0.1.0` — use `client = MultiServerMCPClient(...)` then `await client.get_tools()` directly
+
+### Kagenti MCP Gateway
+
+When both `creditCardTools.enabled` and `kagenti.enabled` are true, an HTTPRoute and MCPServerRegistration are created. The MCPServerRegistration uses `toolPrefix: credit_card_` and references the HTTPRoute via `targetRef`. The HTTPRoute must include `hostnames: ["mcp.127-0-0-1.sslip.io"]` and reference the `mcp-gateway` in `gateway-system` namespace.
+
+### Helm chart configuration
+
+```yaml
+creditCardTools:
+  enabled: false
+  image:
+    repository: quay.io/eformat/credit-card-tools
+    tag: latest
+  port: 8080
+```
+
+### LLM tool calling prompts
+
+Agent prompts must say "You have access to tools. Use them when you need to look up data. Do NOT write out tool calls as text — let the framework handle it." Explicitly mentioning tool names or saying "call the tool" causes Llama models to output tool calls as text instead of using the tool calling API.
+
 ## Kagenti Integration
 
 The agent can optionally integrate with the [kagenti](https://github.com/kagenti) platform for agent catalog discovery, AuthBridge sidecar injection (zero-trust auth), and SPIRE workload identity.
@@ -104,7 +143,7 @@ The kagenti webhook injects an AuthBridge envoy sidecar that intercepts all inbo
 
 When kagenti is enabled, the `spiffe-helper` sidecar writes SVID files to the `svid-output` emptyDir volume. The backend container mounts this at `/spiffe` (not `/opt` — the container image uses `/opt/app-root` for Python). The `SPIFFE_SVID_DIR` env var can override this path (defaults to `/spiffe`).
 
-At startup, `ws_server.py` reads the JWT and X.509 SVIDs and extracts identity claims (`spiffe.id`, `spiffe.audience`, `spiffe.issuer`, `spiffe.expiry`). These are attached to MLflow traces as span attributes on a `voice_agent_invoke` (WebSocket) or `a2a_agent_invoke` (A2A) parent span that wraps each LangGraph invocation.
+At startup, `ws_server.py` reads the JWT and X.509 SVIDs and extracts identity claims (`spiffe.id`, `spiffe.audience`, `spiffe.issuer`, `spiffe.expiry`). After each LangGraph invocation, these are attached as **trace-level tags** via `MlflowClient().set_trace_tag()`. Tags are visible in the MLflow Traces list view (add columns via the "Columns" button). Note: `mlflow.get_last_active_trace()` does not work here because the graph runs in `asyncio.to_thread()` and MLflow's thread-local context doesn't carry over — instead, `client.search_traces(max_results=1)` fetches the most recent trace to tag.
 
 ### Helm chart configuration
 

@@ -1,0 +1,41 @@
+{{- if .Values.creditCardTools.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "ai-voice-agent.fullname" . }}-credit-card-tools
+  labels:
+    {{- include "ai-voice-agent.labels" . | nindent 4 }}
+    app.kubernetes.io/component: credit-card-tools
+spec:
+  replicas: {{ .Values.creditCardTools.replicas }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: credit-card-tools
+      app.kubernetes.io/name: {{ include "ai-voice-agent.fullname" . }}-credit-card-tools
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/component: credit-card-tools
+        app.kubernetes.io/name: {{ include "ai-voice-agent.fullname" . }}-credit-card-tools
+    spec:
+      containers:
+        - name: credit-card-tools
+          image: "{{ .Values.creditCardTools.image.repository }}:{{ .Values.creditCardTools.image.tag }}"
+          imagePullPolicy: {{ .Values.creditCardTools.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.creditCardTools.port }}
+              protocol: TCP
+          resources:
+            {{- toYaml .Values.creditCardTools.resources | nindent 12 }}
+          readinessProbe:
+            tcpSocket:
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 30
+{{- end }}

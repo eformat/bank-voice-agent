@@ -96,6 +96,23 @@ nemoGuardrails:
   url: "http://nemo-guardrails-internal:8000/v1"
   token: ""
 
+# separate mcp server for credit card tools
+creditCardTools:
+  enabled: false
+  image:
+    repository: quay.io/eformat/credit-card-tools
+    tag: latest
+    pullPolicy: Always
+  replicas: 1
+  port: 8080
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+
 kagenti:
   enabled: false
   a2aPort: 8080
