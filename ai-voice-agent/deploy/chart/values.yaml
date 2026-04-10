@@ -113,9 +113,32 @@ creditCardTools:
       cpu: 500m
       memory: 256Mi
 
+echoService:
+  enabled: false
+  image:
+    repository: quay.io/eformat/echo-service
+    tag: latest
+    pullPolicy: Always
+  replicas: 1
+  port: 8090
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
+  route:
+    enabled: true
+
 kagenti:
   enabled: false
   a2aPort: 8080
+  authbridge:
+    # Target audience for outbound token exchange (catch-all route)
+    targetAudience: "echo-service"
+    # Token scopes for outbound token exchange
+    tokenScopes: "openid"
 
 route:
   enabled: true

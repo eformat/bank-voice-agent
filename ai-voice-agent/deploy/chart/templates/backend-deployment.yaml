@@ -23,6 +23,7 @@ spec:
         kagenti.io/inject: "enabled"
         kagenti.io/spire: "enabled"
         kagenti.io/type: "agent"
+        kagenti.io/client-registration-inject: "true"
         protocol.kagenti.io/a2a: ""
         {{- end }}
       {{- if .Values.kagenti.enabled }}
@@ -79,6 +80,10 @@ spec:
             {{- if .Values.creditCardTools.enabled }}
             - name: CREDIT_CARD_TOOLS_MCP_URL
               value: {{ printf "http://%s-credit-card-tools:%v/mcp" (include "ai-voice-agent.fullname" .) .Values.creditCardTools.port | quote }}
+            {{- end }}
+            {{- if or ((.Values.kagenti).echoServiceUrl) .Values.echoService.enabled }}
+            - name: ECHO_SERVICE_URL
+              value: {{ (.Values.kagenti).echoServiceUrl | default (printf "http://%s-echo-service:%v" (include "ai-voice-agent.fullname" .) .Values.echoService.port) | quote }}
             {{- end }}
             - name: API_KEY
               valueFrom:

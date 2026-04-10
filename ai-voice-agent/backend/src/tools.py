@@ -313,8 +313,43 @@ def get_service_type(query: str) -> dict:
 
 
 import hashlib
+import json
 import random
 import re
+
+
+ECHO_SERVICE_URL = os.getenv("ECHO_SERVICE_URL", "")
+
+
+@tool
+def check_identity() -> dict:
+    """Check the workload identity of this agent by calling the echo service.
+
+    Returns the decoded JWT token claims that AuthBridge attaches to outbound
+    requests, including sub, azp (authorized party), client_id, issuer, scope,
+    and groups. This shows the zero-trust identity exchange in action.
+    """
+    if not ECHO_SERVICE_URL:
+        return {"error": "ECHO_SERVICE_URL not configured"}
+    print(f"check_identity tool called → {ECHO_SERVICE_URL}", flush=True)
+    try:
+        resp = requests.get(f"{ECHO_SERVICE_URL}/identity", timeout=10)
+        resp.raise_for_status()
+        data = resp.json()
+        token = data.get("token", {})
+        if token.get("error"):
+            return {"error": token["error"], "detail": "AuthBridge may not be configured for this route"}
+        return {
+            "azp": token.get("azp"),
+            "client_id": token.get("client_id"),
+            "sub": token.get("sub"),
+            "iss": token.get("iss"),
+            "scope": token.get("scope"),
+            "groups": token.get("groups"),
+            "preferred_username": token.get("preferred_username"),
+        }
+    except Exception as e:
+        return {"error": str(e)}
 
 
 # ============================================================

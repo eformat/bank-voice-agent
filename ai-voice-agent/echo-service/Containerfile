@@ -1,0 +1,7 @@
+FROM registry.access.redhat.com/ubi9/python-312:latest
+USER root
+WORKDIR /app
+COPY server.py /app/server.py
+USER 1001
+EXPOSE 8080
+CMD ["python", "server.py"]

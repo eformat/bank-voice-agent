@@ -1,0 +1,19 @@
+{{- if and .Values.echoService.enabled .Values.echoService.route.enabled }}
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: {{ include "ai-voice-agent.fullname" . }}-echo-service
+  labels:
+    {{- include "ai-voice-agent.echoService.labels" . | nindent 4 }}
+spec:
+  to:
+    kind: Service
+    name: {{ include "ai-voice-agent.fullname" . }}-echo-service
+    weight: 100
+  port:
+    targetPort: http
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+  wildcardPolicy: None
+{{- end }}

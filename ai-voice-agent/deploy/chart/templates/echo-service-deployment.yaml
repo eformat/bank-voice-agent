@@ -1,0 +1,43 @@
+{{- if .Values.echoService.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "ai-voice-agent.fullname" . }}-echo-service
+  labels:
+    {{- include "ai-voice-agent.echoService.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.echoService.replicas }}
+  selector:
+    matchLabels:
+      {{- include "ai-voice-agent.echoService.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "ai-voice-agent.echoService.selectorLabels" . | nindent 8 }}
+    spec:
+      containers:
+        - name: echo-service
+          image: "{{ .Values.echoService.image.repository }}:{{ .Values.echoService.image.tag }}"
+          imagePullPolicy: {{ .Values.echoService.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.echoService.port }}
+              protocol: TCP
+          env:
+            - name: PORT
+              value: {{ .Values.echoService.port | quote }}
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 2
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 2
+            periodSeconds: 30
+          resources:
+            {{- toYaml .Values.echoService.resources | nindent 12 }}
+{{- end }}

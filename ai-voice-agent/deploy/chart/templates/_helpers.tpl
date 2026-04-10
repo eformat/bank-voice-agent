@@ -53,3 +53,14 @@ app.kubernetes.io/component: mlflow
 app.kubernetes.io/name: {{ include "ai-voice-agent.fullname" . }}-mlflow
 app.kubernetes.io/component: mlflow
 {{- end }}
+
+{{- define "ai-voice-agent.echoService.labels" -}}
+{{ include "ai-voice-agent.labels" . }}
+app.kubernetes.io/name: {{ include "ai-voice-agent.fullname" . }}-echo-service
+app.kubernetes.io/component: echo-service
+{{- end }}
+
+{{- define "ai-voice-agent.echoService.selectorLabels" -}}
+app.kubernetes.io/name: {{ include "ai-voice-agent.fullname" . }}-echo-service
+app.kubernetes.io/component: echo-service
+{{- end }}

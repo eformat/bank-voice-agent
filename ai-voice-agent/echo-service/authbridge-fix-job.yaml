@@ -1,0 +1,151 @@
+---
+# ServiceAccount for the fix job
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: authbridge-fix
+  namespace: team1
+---
+# ClusterRole to read keycloak secret and patch team namespace secrets/configmaps
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: authbridge-fix
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "patch"]
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "patch"]
+---
+# Bind to keycloak namespace (read keycloak-initial-admin secret)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: authbridge-fix
+subjects:
+  - kind: ServiceAccount
+    name: authbridge-fix
+    namespace: team1
+roleRef:
+  kind: ClusterRole
+  name: authbridge-fix
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: authbridge-fix
+  namespace: team1
+spec:
+  backoffLimit: 5
+  ttlSecondsAfterFinished: 300
+  template:
+    metadata:
+      labels:
+        app: authbridge-fix
+    spec:
+      serviceAccountName: authbridge-fix
+      restartPolicy: OnFailure
+      containers:
+        - name: fix
+          image: registry.access.redhat.com/ubi9/ubi:latest
+          command: ["/bin/bash", "-c"]
+          args:
+            - |
+              set -euo pipefail
+
+              KEYCLOAK_NS="${KEYCLOAK_NS:-keycloak}"
+              KEYCLOAK_SECRET="${KEYCLOAK_SECRET:-keycloak-initial-admin}"
+              KEYCLOAK_REALM="${KEYCLOAK_REALM:-kagenti}"
+              TARGET_NAMESPACES="${TARGET_NAMESPACES:-team1,team2}"
+
+              API="https://kubernetes.default.svc"
+              SA_TOKEN=$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)
+              CACERT=/var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+
+              kube_get() {
+                curl -s --cacert "$CACERT" -H "Authorization: Bearer $SA_TOKEN" "$API$1"
+              }
+
+              kube_patch() {
+                curl -s --cacert "$CACERT" -H "Authorization: Bearer $SA_TOKEN" \
+                  -H "Content-Type: application/strategic-merge-patch+json" \
+                  -X PATCH "$API$1" -d "$2"
+              }
+
+              wait_for() {
+                local path="$1" desc="$2"
+                echo "  Waiting for $desc..."
+                for i in $(seq 1 30); do
+                  HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --cacert "$CACERT" -H "Authorization: Bearer $SA_TOKEN" "$API$path")
+                  if [ "$HTTP_CODE" = "200" ]; then
+                    echo "  Found $desc"
+                    return 0
+                  fi
+                  echo "    waiting... ($i/30) [HTTP $HTTP_CODE]"
+                  sleep 5
+                done
+                echo "  ERROR: Timed out waiting for $desc"
+                return 1
+              }
+
+              echo "=== AuthBridge Fix Job ==="
+
+              # --- Step 1: Read keycloak-initial-admin secret ---
+              echo "[1/3] Reading Keycloak admin credentials..."
+              wait_for "/api/v1/namespaces/$KEYCLOAK_NS/secrets/$KEYCLOAK_SECRET" "$KEYCLOAK_SECRET in $KEYCLOAK_NS"
+
+              ADMIN_DATA=$(kube_get "/api/v1/namespaces/$KEYCLOAK_NS/secrets/$KEYCLOAK_SECRET")
+
+              # Extract base64-encoded values from secret .data
+              ADMIN_USER_B64=$(echo "$ADMIN_DATA" | python3 -c "import sys,json; print(json.load(sys.stdin)['data']['username'])")
+              ADMIN_PASS_B64=$(echo "$ADMIN_DATA" | python3 -c "import sys,json; print(json.load(sys.stdin)['data']['password'])")
+              ADMIN_USER=$(echo "$ADMIN_USER_B64" | base64 -d)
+              echo "  Keycloak admin user: $ADMIN_USER"
+
+              # --- Step 2: Patch keycloak-admin-secret in target namespaces ---
+              echo "[2/3] Patching keycloak-admin-secret..."
+              IFS=',' read -ra NAMESPACES <<< "$TARGET_NAMESPACES"
+              for NS in "${NAMESPACES[@]}"; do
+                wait_for "/api/v1/namespaces/$NS/secrets/keycloak-admin-secret" "keycloak-admin-secret in $NS"
+
+                PATCH="{\"data\":{\"KEYCLOAK_ADMIN_USERNAME\":\"$ADMIN_USER_B64\",\"KEYCLOAK_ADMIN_PASSWORD\":\"$ADMIN_PASS_B64\"}}"
+                RESULT=$(kube_patch "/api/v1/namespaces/$NS/secrets/keycloak-admin-secret" "$PATCH")
+
+                if echo "$RESULT" | grep -q '"keycloak-admin-secret"'; then
+                  echo "  Patched keycloak-admin-secret in $NS"
+                else
+                  echo "  WARNING: Failed to patch in $NS: $(echo "$RESULT" | head -1)"
+                fi
+              done
+
+              # --- Step 3: Patch authbridge-config with TOKEN_URL ---
+              echo "[3/3] Patching authbridge-config with TOKEN_URL..."
+              PRIMARY_NS="${NAMESPACES[0]}"
+              wait_for "/api/v1/namespaces/$PRIMARY_NS/configmaps/authbridge-config" "authbridge-config in $PRIMARY_NS"
+
+              CM_DATA=$(kube_get "/api/v1/namespaces/$PRIMARY_NS/configmaps/authbridge-config")
+              KEYCLOAK_URL=$(echo "$CM_DATA" | python3 -c "import sys,json; print(json.load(sys.stdin)['data'].get('KEYCLOAK_URL','http://keycloak-service.keycloak.svc:8080'))")
+
+              TOKEN_URL="${KEYCLOAK_URL}/realms/${KEYCLOAK_REALM}/protocol/openid-connect/token"
+              PATCH="{\"data\":{\"TOKEN_URL\":\"$TOKEN_URL\"}}"
+              RESULT=$(kube_patch "/api/v1/namespaces/$PRIMARY_NS/configmaps/authbridge-config" "$PATCH")
+
+              if echo "$RESULT" | grep -q '"authbridge-config"'; then
+                echo "  Patched authbridge-config: TOKEN_URL=$TOKEN_URL"
+              else
+                echo "  WARNING: Failed to patch authbridge-config: $(echo "$RESULT" | head -1)"
+              fi
+
+              echo "=== AuthBridge Fix Job Complete ==="
+          env:
+            - name: KEYCLOAK_NS
+              value: "keycloak"
+            - name: KEYCLOAK_SECRET
+              value: "keycloak-initial-admin"
+            - name: KEYCLOAK_REALM
+              value: "kagenti"
+            - name: TARGET_NAMESPACES
+              value: "team1,team2"

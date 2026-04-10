@@ -1,0 +1,36 @@
+{{- if .Values.kagenti.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: authproxy-routes
+  labels:
+    {{- include "ai-voice-agent.backend.labels" . | nindent 4 }}
+data:
+  routes.yaml: |
+    # --- Passthrough exclusions (first-match-wins) ---
+
+    # Cloud metadata service
+    - host: "169.254.169.254"
+      passthrough: true
+
+    # Kubernetes API server (uses SA token, not user JWT)
+    - host: "kubernetes*"
+      passthrough: true
+    - host: "10.96.0.1"
+      passthrough: true
+
+    # LLM inference, TTS, STT, MLflow — internal services that don't need AuthBridge tokens
+    - host: "maas.**"
+      passthrough: true
+    - host: "**-predictor-**"
+      passthrough: true
+    - host: "ai-voice-agent-mlflow*"
+      passthrough: true
+    - host: "ai-voice-agent-credit-card-tools*"
+      passthrough: true
+
+    # --- Catch-all: exchange everything else ---
+    - host: "**"
+      target_audience: {{ ((.Values.kagenti.authbridge).targetAudience) | default "echo-service" | quote }}
+      token_scopes: {{ ((.Values.kagenti.authbridge).tokenScopes) | default "openid" | quote }}
+{{- end }}

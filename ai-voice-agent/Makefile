@@ -1,4 +1,4 @@
-.PHONY: frontend-run backend-run build-frontend build-backend build-credit-card-tools build-all run-all podman-frontend-build podman-backend-build podman-credit-card-tools-build podman-build-all podman-push-all helm-deploy
+.PHONY: frontend-run backend-run build-frontend build-backend build-credit-card-tools build-all run-all podman-frontend-build podman-backend-build podman-credit-card-tools-build podman-echo-service-build podman-build-all podman-push-all helm-deploy
 
 build-all: build-frontend build-backend build-credit-card-tools
 
@@ -21,7 +21,7 @@ build-backend:
 build-credit-card-tools:
 	cd credit-card-tools && pip install -r requirements.txt
 
-podman-build-all: podman-backend-build podman-frontend-build podman-credit-card-tools-build
+podman-build-all: podman-backend-build podman-frontend-build podman-credit-card-tools-build podman-echo-service-build
 
 podman-backend-build:
 	podman build $(PODMAN_ARGS) -f backend/Containerfile -t quay.io/eformat/bank-demo-backend:latest backend
@@ -32,10 +32,14 @@ podman-frontend-build:
 podman-credit-card-tools-build:
 	podman build $(PODMAN_ARGS) -f credit-card-tools/Containerfile -t quay.io/eformat/credit-card-tools:latest credit-card-tools
 
+podman-echo-service-build:
+	podman build $(PODMAN_ARGS) -f echo-service/Containerfile -t quay.io/eformat/echo-service:latest echo-service
+
 podman-push-all:
 	podman push quay.io/eformat/bank-demo-backend:latest
 	podman push quay.io/eformat/bank-demo-frontend:latest
 	podman push quay.io/eformat/credit-card-tools:latest
+	podman push quay.io/eformat/echo-service:latest
 
 helm-deploy:
 	helm upgrade --install ai-voice-agent ./deploy/chart $(HELM_ARGS)

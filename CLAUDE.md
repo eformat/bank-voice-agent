@@ -9,6 +9,7 @@ ai-voice-agent/
   backend/              Python WebSocket server (LangGraph agent graph)
   frontend/             React/Next.js UI
   credit-card-tools/    MCP server for credit card tools (check_credit_score)
+  echo-service/         AuthBridge echo service for zero-trust token demo
   deploy/chart/         Helm chart for OpenShift deployment
   guardrails/           Kustomize resources for Guardrails
 ```
@@ -145,12 +146,45 @@ When kagenti is enabled, the `spiffe-helper` sidecar writes SVID files to the `s
 
 At startup, `ws_server.py` reads the JWT and X.509 SVIDs and extracts identity claims (`spiffe.id`, `spiffe.audience`, `spiffe.issuer`, `spiffe.expiry`). After each LangGraph invocation, these are attached as **trace-level tags** via `MlflowClient().set_trace_tag()`. Tags are visible in the MLflow Traces list view (add columns via the "Columns" button). Note: `mlflow.get_last_active_trace()` does not work here because the graph runs in `asyncio.to_thread()` and MLflow's thread-local context doesn't carry over — instead, `client.search_traces(max_results=1)` fetches the most recent trace to tag.
 
+### AuthBridge outbound route configuration
+
+When kagenti is enabled, the Helm chart creates an `authproxy-routes` ConfigMap that controls which outbound HTTP requests get token exchange. The ext_proc sidecar reads this file at `/etc/authproxy/routes.yaml` and uses first-match-wins routing.
+
+**Glob pattern behavior**: The ext_proc resolver's `*` does NOT match dots — use `**` for multi-segment hostnames. For example, `maas.*` does NOT match `maas.apps.example.com`, but `maas.**` does.
+
+Passthrough rules prevent token exchange for internal services (LLM inference, TTS/STT, MLflow, credit-card-tools). The catch-all `**` rule exchanges tokens for everything else (e.g., the echo service).
+
+```yaml
+kagenti:
+  authbridge:
+    targetAudience: "echo-service"   # JWT `aud` claim for the catch-all exchange
+    tokenScopes: "openid"
+```
+
+### Echo service (zero-trust demo)
+
+The `echo-service/` directory contains a standalone HTTP service that displays AuthBridge JWT token claims. It deploys to a separate namespace (e.g., `team2`) and demonstrates cross-namespace zero-trust token exchange.
+
+- **Dashboard** (`/`): Auto-refreshing HTML page showing recent requests, token claims (azp, sub, iss, scope, groups), and raw JWT
+- **Identity endpoint** (`/identity`): Returns token claims as JSON — called by the backend's `check_identity` tool
+- **Deployment**: `echo-service/deploy.yaml` — Deployment + Service + Route for port 8090
+
+The `check_identity` tool (`backend/src/tools.py`) calls the echo service's `/identity` endpoint. When `ECHO_SERVICE_URL` is set (via `kagenti.echoServiceUrl` Helm value), the supervisor agent can handle "check my identity" prompts. AuthBridge exchanges the agent's SPIRE SVID for a Keycloak JWT, which the echo service decodes and displays.
+
+### AuthBridge fix job
+
+The `echo-service/authbridge-fix-job.yaml` is a Kubernetes Job that automates AuthBridge setup fixes: syncing `keycloak-admin-secret` credentials from the `keycloak-initial-admin` secret, and patching `authbridge-config` with the `TOKEN_URL`. It targets configurable namespaces and includes proper RBAC (ServiceAccount, ClusterRole, ClusterRoleBinding).
+
 ### Helm chart configuration
 
 ```yaml
 kagenti:
   enabled: false
   a2aPort: 8080
+  echoServiceUrl: ""               # e.g., http://echo-service.team2.svc.cluster.local:8090
+  authbridge:
+    targetAudience: "echo-service"
+    tokenScopes: "openid"
 ```
 
 ### Kagenti labels and annotations
@@ -172,4 +206,5 @@ When `kagenti.enabled=true`, the Helm chart adds:
 2. Install with `helm install bank-agent ./chart --set kagenti.enabled=true -n team1`.
 3. The kagenti webhook automatically injects AuthBridge sidecars (envoy-proxy, spiffe-helper, client-registration, proxy-init).
 4. The agent appears in the kagenti catalog via its A2A agent card.
-5. The backend pod runs 3 containers: `backend`, `envoy-proxy`, `spiffe-helper`.
+5. The backend pod runs 4 containers: `backend`, `envoy-proxy`, `spiffe-helper`, `kagenti-client-registration`.
+6. The `client-registration` sidecar requires the pod label `kagenti.io/client-registration-inject: "true"` — without it, the webhook skips injection (operator-managed client registration is the default).

@@ -1,0 +1,17 @@
+{{- if .Values.echoService.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "ai-voice-agent.fullname" . }}-echo-service
+  labels:
+    {{- include "ai-voice-agent.echoService.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: {{ .Values.echoService.port }}
+      targetPort: http
+      protocol: TCP
+  selector:
+    {{- include "ai-voice-agent.echoService.selectorLabels" . | nindent 4 }}
+{{- end }}

@@ -26,6 +26,7 @@ from src.prompts import (
 )
 from src.tools import (
     check_credit_score,
+    check_identity,
     get_service_type,
     log_inquiry,
     lookup_account,
@@ -236,7 +237,8 @@ else:
 # ============================================================
 # Agent Creation
 # ============================================================
-supervisor_agent = create_react_agent(model=llm, tools=[])
+_identity_tool = [check_identity] if os.getenv("ECHO_SERVICE_URL", "") else []
+supervisor_agent = create_react_agent(model=llm, tools=_identity_tool)
 loan_agent = create_react_agent(model=llm, tools=[log_inquiry] + _credit_score_tool)
 credit_card_agent = create_react_agent(model=llm, tools=[get_service_type] + _credit_score_tool)
 investment_agent = create_react_agent(model=llm, tools=[lookup_account] + _credit_score_tool)
