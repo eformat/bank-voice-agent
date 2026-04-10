@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Acme Bank - AI Banking Assistant",
-  description: "AI Voice & Chat Agent - Acme Bank",
+  title: "Fed Aura Capital - AI Banking Assistant",
+  description: "AI Voice & Chat Agent - Fed Aura Capital",
 };
 
 export default function RootLayout({

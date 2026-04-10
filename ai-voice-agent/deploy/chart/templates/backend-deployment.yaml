@@ -83,7 +83,7 @@ spec:
             {{- end }}
             {{- if or ((.Values.kagenti).echoServiceUrl) ((.Values.echoService).enabled) }}
             - name: ECHO_SERVICE_URL
-              value: {{ (.Values.kagenti).echoServiceUrl | default (printf "http://%s-echo-service:%v" (include "ai-voice-agent.fullname" .) ((.Values.echoService).port | default 8090)) | quote }}
+              value: {{ (.Values.kagenti).echoServiceUrl | default (printf "http://%s-echo-service.%s.svc.cluster.local:%v" (include "ai-voice-agent.fullname" .) ((.Values.echoService).namespace | default .Release.Namespace) ((.Values.echoService).port | default 8090)) | quote }}
             {{- end }}
             - name: API_KEY
               valueFrom:

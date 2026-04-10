@@ -290,7 +290,7 @@ function TalkingBankNote({ isTalking, className }: { isTalking: boolean; classNa
         <path d="M 118 230 Q 130 225 142 230 Q 154 235 166 228 Q 175 224 184 229" fill="none" stroke="#2E6B45" strokeWidth="0.5" opacity="0.7" />
 
         <line x1="300" y1="232" x2="382" y2="232" stroke="#2E6B45" strokeWidth="0.5" />
-        <text x="341" y="240" textAnchor="middle" fontSize="4.5" fill="#2E6B45" fontFamily="serif">Treasurer of Acme Bank</text>
+        <text x="341" y="240" textAnchor="middle" fontSize="4.5" fill="#2E6B45" fontFamily="serif">Treasurer of Fed Aura Capital</text>
         <path d="M 310 230 Q 322 225 334 229 Q 346 234 358 227 Q 367 223 376 228" fill="none" stroke="#2E6B45" strokeWidth="0.5" opacity="0.7" />
 
         {/* ── Extra crinkle highlights ── */}
@@ -916,7 +916,7 @@ export default function Home() {
             <div className="w-2 h-2 bg-rh-red rounded-sm" />
           </div>
           <h1 className="text-lg font-bold" style={{ fontFamily: "'Red Hat Display', sans-serif" }}>
-            Acme Bank - AI Banking Assistant
+            Fed Aura Capital - AI Banking Assistant
           </h1>
         </div>
         <div className="ml-auto flex items-center gap-3">

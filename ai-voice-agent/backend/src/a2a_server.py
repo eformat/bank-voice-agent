@@ -1,4 +1,4 @@
-"""A2A protocol adapter for the Acme Bank agent.
+"""A2A protocol adapter for the Fed Aura Capital agent.
 
 Exposes the existing LangGraph banking agent as an A2A-compatible HTTP
 endpoint so kagenti can discover and interact with it via the agent catalog.
@@ -44,9 +44,9 @@ logger = logging.getLogger(__name__)
 
 def _build_agent_card(host: str = "0.0.0.0", port: int = 8080) -> AgentCard:
     return AgentCard(
-        name="Acme Bank Assistant",
+        name="Fed Aura Capital Assistant",
         description=(
-            "AI banking assistant for Acme Bank. Handles credit card inquiries, "
+            "AI banking assistant for Fed Aura Capital. Handles credit card inquiries, "
             "loan applications, investment and savings advice, and credit score checks."
         ),
         url=os.getenv("AGENT_ENDPOINT", f"http://{host}:{port}").rstrip("/") + "/",
@@ -58,9 +58,9 @@ def _build_agent_card(host: str = "0.0.0.0", port: int = 8080) -> AgentCard:
             AgentSkill(
                 id="general_banking",
                 name="General Banking",
-                description="Route and answer general banking questions about Acme Bank services",
+                description="Route and answer general banking questions about Fed Aura Capital services",
                 tags=["banking", "finance", "acme bank"],
-                examples=["What services does Acme Bank offer?"],
+                examples=["What services does Fed Aura Capital offer?"],
             ),
             AgentSkill(
                 id="credit_cards",

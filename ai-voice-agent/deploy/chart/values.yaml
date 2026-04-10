@@ -115,6 +115,7 @@ creditCardTools:
 
 echoService:
   enabled: false
+  namespace: team2
   image:
     repository: quay.io/eformat/echo-service
     tag: latest

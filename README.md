@@ -1,6 +1,6 @@
 # voice-agents
 
-A voice agent demo simulating "Acme Bank" - a banking assistant for credit cards, loans, and investments.
+A voice agent demo simulating "Fed Aura Capital" - a banking assistant for credit cards, loans, and investments.
 
 - RedHat AI Platform
 - Open Source models
