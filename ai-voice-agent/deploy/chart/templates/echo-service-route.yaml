@@ -1,4 +1,4 @@
-{{- if and .Values.echoService.enabled .Values.echoService.route.enabled }}
+{{- if and ((.Values.echoService).enabled) ((.Values.echoService).route).enabled }}
 apiVersion: route.openshift.io/v1
 kind: Route
 metadata:

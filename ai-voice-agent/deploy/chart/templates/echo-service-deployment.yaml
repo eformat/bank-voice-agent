@@ -1,4 +1,4 @@
-{{- if .Values.echoService.enabled }}
+{{- if ((.Values.echoService).enabled) }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
