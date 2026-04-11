@@ -122,6 +122,8 @@ Agent prompts (`backend/src/prompts.py`) are integrated with the MLflow Prompt R
 - **Template syntax**: MLflow uses `{{variable}}` (double braces). The code converts to/from `{context}` (single braces) for LangChain `.format()` compatibility.
 - **Runtime updates**: Edit prompts in the MLflow UI → create a new version → point the `production` alias to it. Changes take effect within 60s without restarting the backend.
 - **MLflow disabled**: Falls through to hardcoded defaults with zero overhead.
+- **Trace linking**: After each graph invocation, all prompt versions are linked to the trace via `MlflowClient().link_prompt_versions_to_trace()`. This is done in the post-invocation block alongside SPIRE tagging (same `search_traces` → `request_id` pattern) since the graph runs in `asyncio.to_thread()` where `load_prompt`'s automatic `link_to_model` can't find the active trace.
+- **Autolog**: MLflow tracing uses `mlflow.langchain.autolog()` instead of manual `MlflowLangchainTracer` callbacks.
 
 Registered prompt names: `bank-agent.supervisor`, `bank-agent.credit-card`, `bank-agent.loan`, `bank-agent.investment-and-savings`.
 
