@@ -144,7 +144,7 @@ class BankAgentExecutor(AgentExecutor):
                 result = self._graph.invoke(inputs, config)
                 try:
                     from ws_server import _mlflow_enabled, _spire_identity
-                    if _mlflow_enabled and _spire_identity:
+                    if _mlflow_enabled:
                         import os
                         import mlflow
                         client = mlflow.MlflowClient()
@@ -158,9 +158,31 @@ class BankAgentExecutor(AgentExecutor):
                             )
                             if traces:
                                 request_id = traces[0].info.request_id
-                                for key, value in _spire_identity.items():
-                                    client.set_trace_tag(request_id, key, value)
-                                logger.info(f"[spire] Tagged trace {request_id}")
+                                if _spire_identity:
+                                    for key, value in _spire_identity.items():
+                                        client.set_trace_tag(request_id, key, value)
+                                    logger.info(f"[spire] Tagged trace {request_id}")
+                                # Link prompts to the trace
+                                try:
+                                    from src.prompts import _PROMPT_REGISTRY, _mlflow_prompts_enabled
+                                    if _mlflow_prompts_enabled:
+                                        prompt_versions = []
+                                        for _key, (pname, _default, _ctx) in _PROMPT_REGISTRY.items():
+                                            pv = mlflow.load_prompt(
+                                                f"prompts:/{pname}@production",
+                                                allow_missing=True,
+                                                cache_ttl_seconds=60,
+                                            )
+                                            if pv:
+                                                prompt_versions.append(pv)
+                                        if prompt_versions:
+                                            client.link_prompt_versions_to_trace(
+                                                prompt_versions=prompt_versions,
+                                                trace_id=request_id,
+                                            )
+                                            logger.info(f"[prompts] Linked {len(prompt_versions)} prompts to trace {request_id}")
+                                except Exception as exc:
+                                    logger.error(f"[prompts] Failed to link prompts: {exc}")
                 except Exception as exc:
                     logger.error(f"[spire] Failed to set trace tags: {exc}")
                 return result

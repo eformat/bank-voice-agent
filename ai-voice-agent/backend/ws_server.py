@@ -58,13 +58,13 @@ _mlflow_enabled = False
 if _mlflow_uri:
     try:
         import mlflow
-        from mlflow.langchain.langchain_tracer import MlflowLangchainTracer
 
         mlflow.set_tracking_uri(_mlflow_uri)
         experiment_name = os.environ.get("MLFLOW_EXPERIMENT_NAME", "ai-voice-agent")
         mlflow.set_experiment(experiment_name)
+        mlflow.langchain.autolog()
         _mlflow_enabled = True
-        print(f"[mlflow] Tracing enabled → {_mlflow_uri}  experiment={experiment_name}", flush=True)
+        print(f"[mlflow] Tracing enabled (autolog) → {_mlflow_uri}  experiment={experiment_name}", flush=True)
     except Exception as exc:
         print(f"[mlflow] Failed to initialise tracing (continuing without): {exc}", flush=True)
 
@@ -109,13 +109,12 @@ if _spire_identity:
 
 
 def _mlflow_callbacks() -> list:
-    """Return MLflow callback handlers if tracing is enabled, else empty list."""
-    if not _mlflow_enabled:
-        return []
-    try:
-        return [MlflowLangchainTracer()]
-    except Exception:
-        return []
+    """Return MLflow callback handlers if tracing is enabled, else empty list.
+
+    With autolog() enabled, LangChain tracing is automatic — no manual
+    callbacks needed. This function is kept for backward compatibility.
+    """
+    return []
 
 
 
@@ -191,7 +190,7 @@ async def _invoke_graph(inputs: Any, config: dict, mode: str = "none") -> dict:
 
     def _invoke_with_spire():
         result = graph.invoke(inputs, config)
-        if _mlflow_enabled and _spire_identity:
+        if _mlflow_enabled:
             try:
                 client = mlflow.MlflowClient()
                 experiment = client.get_experiment_by_name(
@@ -204,9 +203,31 @@ async def _invoke_graph(inputs: Any, config: dict, mode: str = "none") -> dict:
                     )
                     if traces:
                         request_id = traces[0].info.request_id
-                        for key, value in _spire_identity.items():
-                            client.set_trace_tag(request_id, key, value)
-                        print(f"[spire] Tagged trace {request_id}", flush=True)
+                        if _spire_identity:
+                            for key, value in _spire_identity.items():
+                                client.set_trace_tag(request_id, key, value)
+                            print(f"[spire] Tagged trace {request_id}", flush=True)
+                        # Link registered prompts to the trace
+                        try:
+                            from src.prompts import _PROMPT_REGISTRY, _mlflow_prompts_enabled
+                            if _mlflow_prompts_enabled:
+                                prompt_versions = []
+                                for _key, (pname, _default, _ctx) in _PROMPT_REGISTRY.items():
+                                    pv = mlflow.load_prompt(
+                                        f"prompts:/{pname}@production",
+                                        allow_missing=True,
+                                        cache_ttl_seconds=60,
+                                    )
+                                    if pv:
+                                        prompt_versions.append(pv)
+                                if prompt_versions:
+                                    client.link_prompt_versions_to_trace(
+                                        prompt_versions=prompt_versions,
+                                        trace_id=request_id,
+                                    )
+                                    print(f"[prompts] Linked {len(prompt_versions)} prompts to trace {request_id}", flush=True)
+                        except Exception as exc:
+                            print(f"[prompts] Failed to link prompts: {exc}", flush=True)
             except Exception as exc:
                 print(f"[spire] Failed to set trace tags: {exc}", flush=True)
         return result

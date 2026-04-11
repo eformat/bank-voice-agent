@@ -115,6 +115,16 @@ creditCardTools:
   port: 8080
 ```
 
+### MLflow Prompt Registry
+
+Agent prompts (`backend/src/prompts.py`) are integrated with the MLflow Prompt Registry. On startup, if `MLFLOW_TRACKING_URI` is set, prompts are registered in MLflow (if not already present) with a `production` alias. At runtime, prompts are loaded from the `production` alias with a 60s cache TTL, falling back to hardcoded defaults if MLflow is unavailable.
+
+- **Template syntax**: MLflow uses `{{variable}}` (double braces). The code converts to/from `{context}` (single braces) for LangChain `.format()` compatibility.
+- **Runtime updates**: Edit prompts in the MLflow UI → create a new version → point the `production` alias to it. Changes take effect within 60s without restarting the backend.
+- **MLflow disabled**: Falls through to hardcoded defaults with zero overhead.
+
+Registered prompt names: `bank-agent.supervisor`, `bank-agent.credit-card`, `bank-agent.loan`, `bank-agent.investment-and-savings`.
+
 ### LLM tool calling prompts
 
 Agent prompts must say "You have access to tools. Use them when you need to look up data. Do NOT write out tool calls as text — let the framework handle it." Explicitly mentioning tool names or saying "call the tool" causes Llama models to output tool calls as text instead of using the tool calling API.
@@ -163,13 +173,13 @@ kagenti:
 
 ### Echo service (zero-trust demo)
 
-The `echo-service/` directory contains a standalone HTTP service that displays AuthBridge JWT token claims. It deploys to a separate namespace (e.g., `team2`) and demonstrates cross-namespace zero-trust token exchange.
+The `echo-service/` directory contains a standalone HTTP service that displays AuthBridge JWT token claims. It deploys to a **separate namespace** (default `team2`) to demonstrate cross-namespace zero-trust token exchange. The Helm chart deploys it alongside the main agent — a single `helm install` in team1 creates the echo service resources in team2 via explicit `namespace:` in the template metadata.
 
 - **Dashboard** (`/`): Auto-refreshing HTML page showing recent requests, token claims (azp, sub, iss, scope, groups), and raw JWT
 - **Identity endpoint** (`/identity`): Returns token claims as JSON — called by the backend's `check_identity` tool
-- **Deployment**: `echo-service/deploy.yaml` — Deployment + Service + Route for port 8090
+- **Cross-namespace DNS**: When `echoService.enabled=true`, the backend's `ECHO_SERVICE_URL` is auto-set to `http://<release>-echo-service.<namespace>.svc.cluster.local:8090`
 
-The `check_identity` tool (`backend/src/tools.py`) calls the echo service's `/identity` endpoint. When `ECHO_SERVICE_URL` is set (via `kagenti.echoServiceUrl` Helm value), the supervisor agent can handle "check my identity" prompts. AuthBridge exchanges the agent's SPIRE SVID for a Keycloak JWT, which the echo service decodes and displays.
+The `check_identity` tool (`backend/src/tools.py`) calls the echo service's `/identity` endpoint. When `ECHO_SERVICE_URL` is set, the supervisor agent can handle "check my identity" prompts. AuthBridge exchanges the agent's SPIRE SVID for a Keycloak JWT, which the echo service decodes and displays.
 
 ### AuthBridge fix job
 
@@ -178,14 +188,25 @@ The `echo-service/authbridge-fix-job.yaml` is a Kubernetes Job that automates Au
 ### Helm chart configuration
 
 ```yaml
+echoService:
+  enabled: false
+  namespace: team2                   # deploys to this namespace (cross-namespace)
+  port: 8090
+  route:
+    enabled: true
+
 kagenti:
   enabled: false
   a2aPort: 8080
-  echoServiceUrl: ""               # e.g., http://echo-service.team2.svc.cluster.local:8090
+  echoServiceUrl: ""               # override auto-generated URL if needed
   authbridge:
     targetAudience: "echo-service"
     tokenScopes: "openid"
 ```
+
+### AgentCard and Service port ordering
+
+The kagenti operator creates an `AgentCard` resource by fetching `/.well-known/agent-card.json` from the **first port** listed in the backend Service. The `a2a` port (8080) must come before `ws` (8765) in the Service spec, otherwise the operator hits the WebSocket server and gets a 426 Upgrade Required error.
 
 ### Kagenti labels and annotations
 
