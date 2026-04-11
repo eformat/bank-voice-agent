@@ -127,15 +127,15 @@ def _register_prompts():
             # Convert {context} → {{context}} for MLflow template syntax
             mlflow_template = template.replace("{context}", "{{context}}") if has_context else template
             try:
-                existing = mlflow.load_prompt(name, version=1, allow_missing=True)
+                existing = mlflow.genai.load_prompt(name, version=1, allow_missing=True)
                 if existing is None:
-                    mlflow.register_prompt(
+                    mlflow.genai.register_prompt(
                         name=name,
                         template=mlflow_template,
                         commit_message="Initial registration from prompts.py",
                         tags={"agent": key, "source": "prompts.py"},
                     )
-                    mlflow.set_prompt_alias(name, alias="production", version=1)
+                    mlflow.genai.set_prompt_alias(name, alias="production", version=1)
                     print(f"[prompts] Registered '{name}' v1 in MLflow", flush=True)
                 else:
                     print(f"[prompts] '{name}' already exists in MLflow (v{existing.version})", flush=True)
@@ -157,7 +157,7 @@ def _load_prompt(key: str) -> str:
     try:
         import mlflow
 
-        prompt = mlflow.load_prompt(
+        prompt = mlflow.genai.load_prompt(
             f"prompts:/{name}@production",
             allow_missing=True,
             cache_ttl_seconds=60,

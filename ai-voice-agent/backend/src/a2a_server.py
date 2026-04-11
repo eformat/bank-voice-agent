@@ -162,13 +162,22 @@ class BankAgentExecutor(AgentExecutor):
                                     for key, value in _spire_identity.items():
                                         client.set_trace_tag(request_id, key, value)
                                     logger.info(f"[spire] Tagged trace {request_id}")
-                                # Link prompts to the trace
+                                # Link only the prompts that were actually used
                                 try:
                                     from src.prompts import _PROMPT_REGISTRY, _mlflow_prompts_enabled
                                     if _mlflow_prompts_enabled:
+                                        msg_names = {getattr(m, "name", None) for m in result.get("messages", [])}
+                                        used_keys = ["supervisor"]
+                                        if "credit_card_agent" in msg_names:
+                                            used_keys.append("credit_card")
+                                        if "loan_agent" in msg_names:
+                                            used_keys.append("loan")
+                                        if "investment_agent" in msg_names:
+                                            used_keys.append("investment")
                                         prompt_versions = []
-                                        for _key, (pname, _default, _ctx) in _PROMPT_REGISTRY.items():
-                                            pv = mlflow.load_prompt(
+                                        for key in used_keys:
+                                            pname = _PROMPT_REGISTRY[key][0]
+                                            pv = mlflow.genai.load_prompt(
                                                 f"prompts:/{pname}@production",
                                                 allow_missing=True,
                                                 cache_ttl_seconds=60,
